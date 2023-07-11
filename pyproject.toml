@@ -1,0 +1,32 @@
+[project]
+name = "ocrmypdf-easyocr"
+version = "0.1.0"
+description = "Plugin to run OCRmyPDF with the EasyOCR engine"
+authors = [
+    {name = "James R. Barlow", email = "james@purplerock.ca"},
+]
+dependencies = [
+    "easyocr>=1.7.0",
+    "ocrmypdf>=14.2.1",
+    "Pillow<10"
+]
+requires-python = ">=3.10"
+readme = "README.md"
+license = {text = "MIT"}
+
+[project.entry-points]
+
+[project.entry-points.ocrmypdf]
+ocrmypdf = "ocrmypdf_easyocr"
+
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
+
+[tool]
+[tool.pdm]
+[tool.pdm.dev-dependencies]
+dev = [
+    "-e file:///${PROJECT_ROOT}/../ocrmypdf#egg=ocrmypdf",
+    "ruff>=0.0.272",
+]
