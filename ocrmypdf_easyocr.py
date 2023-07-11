@@ -7,6 +7,7 @@ import os
 from math import atan2, cos, hypot, sin
 from typing import NamedTuple
 
+import cv2 as cv
 import easyocr
 import pluggy
 from ocrmypdf import OcrEngine, hookimpl
@@ -14,7 +15,6 @@ from ocrmypdf._exec import tesseract
 from PIL import Image
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfgen.canvas import Canvas
-import cv2 as cv
 
 log = logging.getLogger(__name__)
 
