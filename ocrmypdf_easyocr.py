@@ -93,7 +93,7 @@ def easyocr_to_pdf(image_filename, image_scale, results, output_pdf):
         log.info(f"Word '{result.text}' in-image bbox: {bbox_string(result.quad)}")
         bbox = pt_from_pixel(result.quad, scale, height)
 
-        if True or TEXT_POSITION_DEBUG:
+        if TEXT_POSITION_DEBUG:
             pdf.setDash()
             pdf.setStrokeColorRGB(0.95, 0.65, 0.95)
             pdf.setLineWidth(0.5)
