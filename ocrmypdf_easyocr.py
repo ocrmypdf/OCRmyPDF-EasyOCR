@@ -8,6 +8,8 @@ from math import atan2, cos, hypot, sin
 from pathlib import Path
 from typing import NamedTuple
 
+import importlib.resources
+
 import cv2 as cv
 import easyocr
 import pluggy
@@ -28,6 +30,7 @@ from pikepdf import (
 log = logging.getLogger(__name__)
 
 TEXT_POSITION_DEBUG = False
+GLYPHLESS_FONT = importlib.resources.read_binary("ocrmypdf_easyocr", "pdf.ttf")
 
 
 @hookimpl
@@ -141,7 +144,7 @@ def register_glyphlessfont(pdf):
             Type=Name.FontDescriptor,
         )
     )
-    font_descriptor.FontFile2 = pdf.make_stream(Path("pdf.ttf").read_bytes())
+    font_descriptor.FontFile2 = pdf.make_stream(GLYPHLESS_FONT)
     cid_font_type2.FontDescriptor = font_descriptor
     return basefont
 

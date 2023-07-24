@@ -29,3 +29,6 @@ dev = [
 [build-system]
 requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools.package-data]
+ocrmypdf_easyocr = ["pdf.ttf"]
