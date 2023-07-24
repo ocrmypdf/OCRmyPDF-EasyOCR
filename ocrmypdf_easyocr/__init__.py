@@ -29,6 +29,73 @@ from pikepdf import (
 
 log = logging.getLogger(__name__)
 
+
+ISO_639_3_2 = {
+    "afr": "af",
+    "alb": "sq",
+    "ara": "ar",
+    "aze": "az",
+    "bel": "be",
+    "ben": "bn",
+    "bos": "bs",
+    "bul": "bg",
+    "cat": "ca",
+    "ces": "cs",
+    "che": "che",
+    "chi_sim": "ch_sim",
+    "chi_tra": "ch_tra",
+    "cym": "cy",
+    "cze": "cs",
+    "dan": "da",
+    "deu": "de",
+    "dut": "nl",
+    "eng": "en",
+    "est": "et",
+    "esp": "es",
+    "fra": "fr",
+    "gle": "ga",
+    "hin": "hi",
+    "hrv": "hr",
+    "hun": "hu",
+    "ice": "is",
+    "ind": "id",
+    "isl": "is",
+    "ita": "it",
+    "jpn": "ja",
+    "kor": "ko",
+    "kur": "ku",
+    "lat": "la",
+    "lav": "lv",
+    "lit": "lt",
+    "may": "ms",
+    "mlt": "mt",
+    "mon": "mn",
+    "msa": "ms",
+    "nep": "ne",
+    "nld": "nl",
+    "nor": "no",
+    "oci": "oc",
+    "per": "fa",
+    "pol": "pl",
+    "por": "pt",
+    "rum": "ro",
+    "ron": "ro",
+    "rus": "ru",
+    "slo": "sk",
+    "slk": "sk",
+    "slv": "sl",
+    "spa": "es",
+    "swa": "sw",
+    "swe": "sv",
+    "tam": "ta",
+    "tha": "th",
+    "tgl": "tl",
+    "tur": "tr",
+    "ukr": "uk",
+    "urd": "ur",
+    "vie": "vi",
+}
+
 TEXT_POSITION_DEBUG = False
 GLYPHLESS_FONT = importlib.resources.read_binary("ocrmypdf_easyocr", "pdf.ttf")
 
@@ -309,7 +376,7 @@ class EasyOCREngine(OcrEngine):
 
     @staticmethod
     def languages(options):
-        return {"eng", "chi_sim"}
+        return ISO_639_3_2.keys()
 
     @staticmethod
     def get_orientation(input_file, options):
@@ -334,7 +401,9 @@ class EasyOCREngine(OcrEngine):
 
     @staticmethod
     def generate_pdf(input_file, output_pdf, output_text, options):
-        reader = easyocr.Reader(["en", "ch_sim"], gpu=options.gpu)
+        languages = [ISO_639_3_2[lang] for lang in options.languages]
+
+        reader = easyocr.Reader(languages, gpu=options.gpu)
         img = cv.imread(os.fspath(input_file))
         gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
         raw_results = reader.readtext(gray)
