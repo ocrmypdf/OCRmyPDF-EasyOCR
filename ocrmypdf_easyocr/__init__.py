@@ -100,14 +100,13 @@ def register_glyphlessfont(pdf):
             ),
             FontDescriptor=PLACEHOLDER,
             Subtype=Name.CIDFontType2,
-            ToUnicode=PLACEHOLDER,
             Type=Name.Font,
             DW=1000 // CHAR_ASPECT,
         )
     )
     basefont.DescendantFonts = [cid_font_type2]
     cid_font_type2.CIDToGIDMap = pdf.make_stream(b"\x00\x01" * 65536)
-    basefont.ToUnicode = cid_font_type2.ToUnicode = pdf.make_stream(
+    basefont.ToUnicode = pdf.make_stream(
         b"/CIDInit /ProcSet findresource begin\n"
         b"12 dict begin\n"
         b"begincmap\n"
@@ -163,13 +162,10 @@ def easyocr_to_pikepdf(image_filename, image_scale, results, output_pdf):
     )
 
     cs = []
-    inst_q = ContentStreamInstruction([], Operator("q"))
-    inst_Q = ContentStreamInstruction([], Operator("Q"))
-
-    cs.append(inst_q)
+    cs.append(ContentStreamInstruction([], Operator("q")))
 
     for result in results:
-        log.info(f"Word '{result.text}' in-image bbox: {bbox_string(result.quad)}")
+        log.info(f"Textline '{result.text}' in-image bbox: {bbox_string(result.quad)}")
         bbox = pt_from_pixel(result.quad, scale, height)
 
         angle = -atan2(bbox[5] - bbox[7], bbox[4] - bbox[6])
@@ -186,7 +182,7 @@ def easyocr_to_pikepdf(image_filename, image_scale, results, output_pdf):
 
         font_size = hypot(bbox[0] - bbox[6], bbox[1] - bbox[7])
         cs.append(ContentStreamInstruction([Name("/f-0-0"), font_size], Operator("Tf")))
-        log.info(f"Word '{result.text}' PDF bbox: {bbox_string(bbox)}")
+        log.info(f"Textline '{result.text}' PDF bbox: {bbox_string(bbox)}")
         space_width = 0
         box_width = hypot(bbox[4] - bbox[6], bbox[5] - bbox[7]) + space_width
         h_stretch = 100.0 * box_width / len(result.text) / font_size * CHAR_ASPECT
@@ -194,13 +190,13 @@ def easyocr_to_pikepdf(image_filename, image_scale, results, output_pdf):
 
         cs.append(
             ContentStreamInstruction(
-                [[b"\xfe\xff" + result.text.encode("utf-16be")]],
+                [[result.text.encode("utf-16be")]],
                 Operator("TJ"),
             )
         )
         cs.append(ContentStreamInstruction([], Operator("ET")))
 
-    cs.append(inst_Q)
+    cs.append(ContentStreamInstruction([], Operator("Q")))
     pdf.pages[0].Contents = pdf.make_stream(unparse_content_stream(cs))
 
     pdf.save(output_pdf)
