@@ -22,7 +22,6 @@ ocrmypdf = "ocrmypdf_easyocr"
 
 [project.optional-dependencies]
 dev = [
-    "-e file:///${PROJECT_ROOT}/../ocrmypdf#egg=ocrmypdf",
     "ruff>=0.0.272",
 ]
 
