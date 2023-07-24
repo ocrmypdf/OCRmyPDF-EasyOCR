@@ -5,6 +5,7 @@
 import logging
 import os
 from math import atan2, cos, hypot, sin
+from pathlib import Path
 from typing import NamedTuple
 
 import cv2 as cv
@@ -15,6 +16,14 @@ from ocrmypdf._exec import tesseract
 from PIL import Image
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfgen.canvas import Canvas
+from pikepdf import (
+    Pdf,
+    ContentStreamInstruction,
+    Operator,
+    Dictionary,
+    Name,
+    unparse_content_stream,
+)
 
 log = logging.getLogger(__name__)
 
@@ -59,6 +68,140 @@ def pt_from_pixel(bbox, scale, height):
 
 def bbox_string(bbox):
     return ", ".join(f"{elm:.0f}" for elm in bbox)
+
+
+CHAR_ASPECT = 2
+
+
+def register_glyphlessfont(pdf):
+    PLACEHOLDER = Name.Placeholder
+
+    basefont = pdf.make_indirect(
+        Dictionary(
+            BaseFont=Name.GlyphLessFont,
+            DescendantFonts=[PLACEHOLDER],
+            Encoding=Name("/Identity-H"),
+            Subtype=Name.Type0,
+            ToUnicode=PLACEHOLDER,
+            Type=Name.Font,
+        )
+    )
+    cid_font_type2 = pdf.make_indirect(
+        Dictionary(
+            BaseFont=Name.GlyphLessFont,
+            CIDToGIDMap=PLACEHOLDER,
+            CIDSystemInfo=Dictionary(
+                Ordering="Identity",
+                Registry="Adobe",
+                Supplement=0,
+            ),
+            FontDescriptor=PLACEHOLDER,
+            Subtype=Name.CIDFontType2,
+            ToUnicode=PLACEHOLDER,
+            Type=Name.Font,
+            DW=1000 // CHAR_ASPECT,
+        )
+    )
+    basefont.DescendantFonts = [cid_font_type2]
+    cid_font_type2.CIDToGIDMap = pdf.make_stream(b"\x00\x01" * 65536)
+    basefont.ToUnicode = cid_font_type2.ToUnicode = pdf.make_stream(
+        b"/CIDInit /ProcSet findresource begin\n"
+        b"12 dict begin\n"
+        b"begincmap\n"
+        b"/CIDSystemInfo\n"
+        b"<<\n"
+        b"  /Registry (Adobe)\n"
+        b"  /Ordering (UCS)\n"
+        b"  /Supplement 0\n"
+        b">> def\n"
+        b"/CMapName /Adobe-Identify-UCS def\n"
+        b"/CMapType 2 def\n"
+        b"1 begincodespacerange\n"
+        b"<0000> <FFFF>\n"
+        b"endcodespacerange\n"
+        b"1 beginbfrange\n"
+        b"<0000> <FFFF> <0000>\n"
+        b"endbfrange\n"
+        b"endcmap\n"
+        b"CMapName currentdict /CMap defineresource pop\n"
+        b"end\n"
+        b"end\n"
+    )
+    font_descriptor = pdf.make_indirect(
+        Dictionary(
+            Ascent=1000,
+            CapHeight=1000,
+            Descent=-1,
+            Flags=5,  # Fixed pitch and symbolic
+            FontBBox=[0, 0, 1000 // CHAR_ASPECT, 1000],
+            FontFile2=PLACEHOLDER,
+            FontName=Name.GlyphLessFont,
+            ItalicAngle=0,
+            StemV=80,
+            Type=Name.FontDescriptor,
+        )
+    )
+    font_descriptor.FontFile2 = pdf.make_stream(Path("pdf.ttf").read_bytes())
+    cid_font_type2.FontDescriptor = font_descriptor
+    return basefont
+
+
+def easyocr_to_pikepdf(image_filename, image_scale, results, output_pdf):
+    with Image.open(image_filename) as im:
+        dpi = im.info["dpi"]
+        scale = 72.0 / dpi[0] / image_scale, 72.0 / dpi[1] / image_scale
+        width = im.width
+        height = im.height
+    pdf = Pdf.new()
+    pdf.add_blank_page(page_size=(width * scale[0], height * scale[1]))
+
+    pdf.pages[0].Resources = Dictionary(
+        Font=Dictionary({"/f-0-0": register_glyphlessfont(pdf)})
+    )
+
+    cs = []
+    inst_q = ContentStreamInstruction([], Operator("q"))
+    inst_Q = ContentStreamInstruction([], Operator("Q"))
+
+    cs.append(inst_q)
+
+    for result in results:
+        log.info(f"Word '{result.text}' in-image bbox: {bbox_string(result.quad)}")
+        bbox = pt_from_pixel(result.quad, scale, height)
+
+        angle = -atan2(bbox[5] - bbox[7], bbox[4] - bbox[6])
+        if abs(angle) < 0.01:  # 0.01 radians is 0.57 degrees
+            angle = 0.0
+        cos_a, sin_a = cos(angle), sin(angle)
+
+        cs.append(ContentStreamInstruction([], Operator("BT")))
+        cs.append(
+            ContentStreamInstruction(
+                [cos_a, -sin_a, sin_a, cos_a, bbox[6], bbox[7]], Operator("Tm")
+            )
+        )
+
+        font_size = hypot(bbox[0] - bbox[6], bbox[1] - bbox[7])
+        cs.append(ContentStreamInstruction([Name("/f-0-0"), font_size], Operator("Tf")))
+        log.info(f"Word '{result.text}' PDF bbox: {bbox_string(bbox)}")
+        space_width = 0
+        box_width = hypot(bbox[4] - bbox[6], bbox[5] - bbox[7]) + space_width
+        h_stretch = 100.0 * box_width / len(result.text) / font_size * CHAR_ASPECT
+        cs.append(ContentStreamInstruction([h_stretch], Operator("Tz")))
+
+        cs.append(
+            ContentStreamInstruction(
+                [[b"\xfe\xff" + result.text.encode("utf-16be")]],
+                Operator("TJ"),
+            )
+        )
+        cs.append(ContentStreamInstruction([], Operator("ET")))
+
+    cs.append(inst_Q)
+    pdf.pages[0].Contents = pdf.make_stream(unparse_content_stream(cs))
+
+    pdf.save(output_pdf)
+    return output_pdf
 
 
 def easyocr_to_pdf(image_filename, image_scale, results, output_pdf):
@@ -201,7 +344,8 @@ class EasyOCREngine(OcrEngine):
         text = " ".join([result.text for result in results])
         output_text.write_text(text)
 
-        easyocr_to_pdf(input_file, 1.0, results, output_pdf)
+        # easyocr_to_pdf(input_file, 1.0, results, output_pdf)
+        easyocr_to_pikepdf(input_file, 1.0, results, output_pdf)
 
 
 @hookimpl
