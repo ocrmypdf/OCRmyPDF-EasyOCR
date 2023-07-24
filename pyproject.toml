@@ -8,7 +8,8 @@ authors = [
 dependencies = [
     "easyocr>=1.7.0",
     "ocrmypdf>=14.2.1",
-    "Pillow<10"
+    "Pillow<10",
+    "opencv-python>=4.8.0.74",
 ]
 requires-python = ">=3.10"
 readme = "README.md"
@@ -19,14 +20,12 @@ license = {text = "MIT"}
 [project.entry-points.ocrmypdf]
 ocrmypdf = "ocrmypdf_easyocr"
 
-[build-system]
-requires = ["pdm-backend"]
-build-backend = "pdm.backend"
-
-[tool]
-[tool.pdm]
-[tool.pdm.dev-dependencies]
+[project.optional-dependencies]
 dev = [
     "-e file:///${PROJECT_ROOT}/../ocrmypdf#egg=ocrmypdf",
     "ruff>=0.0.272",
 ]
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
