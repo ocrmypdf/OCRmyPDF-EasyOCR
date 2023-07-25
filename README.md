@@ -1,4 +1,4 @@
-# ocrmypdf-easyocr
+# OCRmyPDF EasyOCR
 
 This is plugin to run OCRmyPDF with the EasyOCR engine instead of Tesseract OCR,
 the default OCR engine for OCRmyPDF. Since EasyOCR is based on PyTorch, it makes

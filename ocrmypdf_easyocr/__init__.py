@@ -243,6 +243,7 @@ def easyocr_to_pikepdf(image_filename, image_scale, results, output_pdf):
         cos_a, sin_a = cos(angle), sin(angle)
 
         cs.append(ContentStreamInstruction([], Operator("BT")))
+        cs.append(ContentStreamInstruction([3], Operator("Tr")))  # Invisible ink
         cs.append(
             ContentStreamInstruction(
                 [cos_a, -sin_a, sin_a, cos_a, bbox[6], bbox[7]], Operator("Tm")
