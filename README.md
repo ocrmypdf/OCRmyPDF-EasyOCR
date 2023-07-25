@@ -24,7 +24,7 @@ When installed in the same virtual environment as OCRmyPDF, it will override Tes
 Contributions, especially pull requests are quite welcome!
 
 At the moment this plugin is alpha status and missing some essential features:
-- looks like there is a race condition if multiple processes try to install a missing EasyOCR language all at once, for the first time a new language is referenced
 - Tesseract is still required for determine page skew and for orientation correction
+- EasyOCR is effectively single threaded, to eliminate race conditions
 
 

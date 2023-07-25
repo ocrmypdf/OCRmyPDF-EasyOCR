@@ -8,6 +8,7 @@ from math import atan2, cos, hypot, sin
 from pathlib import Path
 from typing import NamedTuple
 
+from multiprocessing import Semaphore
 import importlib.resources
 
 import cv2 as cv
@@ -98,6 +99,7 @@ ISO_639_3_2 = {
 
 TEXT_POSITION_DEBUG = False
 GLYPHLESS_FONT = importlib.resources.read_binary("ocrmypdf_easyocr", "pdf.ttf")
+GPU_SEMAPHORE = Semaphore(1)
 
 
 @hookimpl
@@ -252,6 +254,8 @@ def easyocr_to_pikepdf(image_filename, image_scale, results, output_pdf):
         log.info(f"Textline '{result.text}' PDF bbox: {bbox_string(bbox)}")
         space_width = 0
         box_width = hypot(bbox[4] - bbox[6], bbox[5] - bbox[7]) + space_width
+        if len(result.text) == 0 or box_width == 0 or font_size == 0:
+            continue
         h_stretch = 100.0 * box_width / len(result.text) / font_size * CHAR_ASPECT
         cs.append(ContentStreamInstruction([h_stretch], Operator("Tz")))
 
@@ -403,10 +407,11 @@ class EasyOCREngine(OcrEngine):
     def generate_pdf(input_file, output_pdf, output_text, options):
         languages = [ISO_639_3_2[lang] for lang in options.languages]
 
-        reader = easyocr.Reader(languages, gpu=options.gpu)
-        img = cv.imread(os.fspath(input_file))
-        gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
-        raw_results = reader.readtext(gray)
+        with GPU_SEMAPHORE:
+            reader = easyocr.Reader(languages, gpu=options.gpu)
+            img = cv.imread(os.fspath(input_file))
+            gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
+            raw_results = reader.readtext(gray)
         results = [tidy_easyocr_result(r) for r in raw_results]
 
         text = " ".join([result.text for result in results])
