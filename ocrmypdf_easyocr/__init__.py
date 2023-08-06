@@ -2,31 +2,30 @@
 # SPDX-License-Identifier: MIT
 
 
+import importlib.resources
 import logging
 import os
 from math import atan2, cos, hypot, sin
+from multiprocessing import Semaphore
 from pathlib import Path
 from typing import NamedTuple
-
-from multiprocessing import Semaphore
-import importlib.resources
 
 import cv2 as cv
 import easyocr
 import pluggy
 from ocrmypdf import OcrEngine, hookimpl
 from ocrmypdf._exec import tesseract
+from pikepdf import (
+    ContentStreamInstruction,
+    Dictionary,
+    Name,
+    Operator,
+    Pdf,
+    unparse_content_stream,
+)
 from PIL import Image
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfgen.canvas import Canvas
-from pikepdf import (
-    Pdf,
-    ContentStreamInstruction,
-    Operator,
-    Dictionary,
-    Name,
-    unparse_content_stream,
-)
 
 log = logging.getLogger(__name__)
 
@@ -99,7 +98,7 @@ ISO_639_3_2 = {
 
 TEXT_POSITION_DEBUG = False
 GLYPHLESS_FONT = importlib.resources.read_binary("ocrmypdf_easyocr", "pdf.ttf")
-GPU_SEMAPHORE = Semaphore(1)
+GPU_SEMAPHORE = Semaphore(3)
 
 
 @hookimpl
@@ -328,10 +327,10 @@ class EasyOCREngine(OcrEngine):
     def generate_pdf(input_file, output_pdf, output_text, options):
         languages = [ISO_639_3_2[lang] for lang in options.languages]
 
+        img = cv.imread(os.fspath(input_file))
+        gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
         with GPU_SEMAPHORE:
             reader = easyocr.Reader(languages, gpu=options.gpu)
-            img = cv.imread(os.fspath(input_file))
-            gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
             raw_results = reader.readtext(gray)
         results = [tidy_easyocr_result(r) for r in raw_results]
 
