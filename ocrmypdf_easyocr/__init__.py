@@ -1,6 +1,9 @@
 # SPDX-FileCopyrightText: 2023 James R. Barlow
 # SPDX-License-Identifier: MIT
 
+"""EasyOCR plugin for OCRmyPDF."""
+
+from __future__ import annotations
 
 import importlib.resources
 import logging
@@ -8,7 +11,7 @@ import os
 from math import atan2, cos, hypot, sin
 from multiprocessing import Semaphore
 from pathlib import Path
-from typing import NamedTuple
+from typing import Iterable, NamedTuple
 
 import cv2 as cv
 import easyocr
@@ -24,13 +27,11 @@ from pikepdf import (
     unparse_content_stream,
 )
 from PIL import Image
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfgen.canvas import Canvas
 
 log = logging.getLogger(__name__)
 
 
-ISO_639_3_2 = {
+ISO_639_3_2: dict[str, str] = {
     "afr": "af",
     "alb": "sq",
     "ara": "ar",
@@ -103,7 +104,6 @@ GPU_SEMAPHORE = Semaphore(3)
 
 @hookimpl
 def initialize(plugin_manager: pluggy.PluginManager):
-    # plugin_manager.set_blocked("ocrmypdf.builtin_plugins.tesseract_ocr")
     pass
 
 
@@ -144,7 +144,13 @@ def bbox_string(bbox):
 CHAR_ASPECT = 2
 
 
-def register_glyphlessfont(pdf):
+def register_glyphlessfont(pdf: Pdf):
+    """Register the glyphless font.
+
+    Create several data structures in the Pdf to describe the font. While it create
+    the data, a reference should be set in at least one page's /Resources dictionary
+    to retain the font in the output PDF and ensure it is usable on that page.
+    """
     PLACEHOLDER = Name.Placeholder
 
     basefont = pdf.make_indirect(
@@ -216,61 +222,121 @@ def register_glyphlessfont(pdf):
     return basefont
 
 
-def easyocr_to_pikepdf(image_filename, image_scale, results, output_pdf):
-    with Image.open(image_filename) as im:
-        dpi = im.info["dpi"]
-        scale = 72.0 / dpi[0] / image_scale, 72.0 / dpi[1] / image_scale
-        width = im.width
-        height = im.height
-    pdf = Pdf.new()
-    pdf.add_blank_page(page_size=(width * scale[0], height * scale[1]))
+def cs_q():
+    return ContentStreamInstruction([], Operator("q"))
 
-    pdf.pages[0].Resources = Dictionary(
-        Font=Dictionary({"/f-0-0": register_glyphlessfont(pdf)})
-    )
 
-    cs = []
-    cs.append(ContentStreamInstruction([], Operator("q")))
+def cs_Q():
+    return ContentStreamInstruction([], Operator("Q"))
 
+
+def cs_BT():
+    return ContentStreamInstruction([], Operator("BT"))
+
+
+def cs_ET():
+    return ContentStreamInstruction([], Operator("ET"))
+
+
+def cs_Tf(font, size):
+    return ContentStreamInstruction([font, size], Operator("Tf"))
+
+
+def cs_Tm(a, b, c, d, e, f):
+    return ContentStreamInstruction([a, b, c, d, e, f], Operator("Tm"))
+
+
+def cs_Tr(mode):
+    return ContentStreamInstruction([mode], Operator("Tr"))
+
+
+def cs_Tz(scale):
+    return ContentStreamInstruction([scale], Operator("Tz"))
+
+
+def cs_TJ(text):
+    return ContentStreamInstruction([[text.encode("utf-16be")]], Operator("TJ"))
+
+
+def generate_text_content_stream(
+    results: Iterable[EasyOCRResult], scale: tuple[float, float], height: int
+):
+    """Generate a content stream for the described by results.
+
+    Args:
+        results (Iterable[EasyOCRResult]): Results of OCR.
+        scale (tuple[float, float]): Scale of the image.
+        height (int): Height of the image.
+
+    Yields:
+        ContentStreamInstruction: Content stream instructions.
+    """
+
+    yield cs_q()
     for result in results:
-        log.info(f"Textline '{result.text}' in-image bbox: {bbox_string(result.quad)}")
+        log.debug(f"Textline '{result.text}' in-image bbox: {bbox_string(result.quad)}")
         bbox = pt_from_pixel(result.quad, scale, height)
-
         angle = -atan2(bbox[5] - bbox[7], bbox[4] - bbox[6])
         if abs(angle) < 0.01:  # 0.01 radians is 0.57 degrees
             angle = 0.0
         cos_a, sin_a = cos(angle), sin(angle)
 
-        cs.append(ContentStreamInstruction([], Operator("BT")))
-        cs.append(ContentStreamInstruction([3], Operator("Tr")))  # Invisible ink
-        cs.append(
-            ContentStreamInstruction(
-                [cos_a, -sin_a, sin_a, cos_a, bbox[6], bbox[7]], Operator("Tm")
-            )
-        )
-
         font_size = hypot(bbox[0] - bbox[6], bbox[1] - bbox[7])
-        cs.append(ContentStreamInstruction([Name("/f-0-0"), font_size], Operator("Tf")))
-        log.info(f"Textline '{result.text}' PDF bbox: {bbox_string(bbox)}")
+
+        log.debug(f"Textline '{result.text}' PDF bbox: {bbox_string(bbox)}")
         space_width = 0
         box_width = hypot(bbox[4] - bbox[6], bbox[5] - bbox[7]) + space_width
         if len(result.text) == 0 or box_width == 0 or font_size == 0:
             continue
         h_stretch = 100.0 * box_width / len(result.text) / font_size * CHAR_ASPECT
-        cs.append(ContentStreamInstruction([h_stretch], Operator("Tz")))
 
-        cs.append(
-            ContentStreamInstruction(
-                [[result.text.encode("utf-16be")]],
-                Operator("TJ"),
-            )
+        yield cs_BT()
+        yield cs_Tr(3)  # Invisible ink
+        yield cs_Tm(cos_a, -sin_a, sin_a, cos_a, bbox[6], bbox[7])
+        yield cs_Tf(Name("/f-0-0"), font_size)
+        yield cs_Tz(h_stretch)
+        yield cs_TJ(result.text)
+        yield cs_ET()
+    yield cs_Q()
+
+
+def easyocr_to_pikepdf(
+    image_filename: Path,
+    image_scale: float,
+    results: Iterable[EasyOCRResult],
+    output_pdf: Path,
+):
+    """Convert EasyOCR results to a PDF with text annotations (no images).
+
+    Args:
+        image_filename: Path to the image file that was OCR'd.
+        image_scale: Scale factor applied to the OCR image. 1.0 means the
+            image is at the scale implied by its DPI. 2.0 means the image
+            is twice as large as implied by its DPI.
+        results: List of EasyOCRResult objects.
+        output_pdf: Path to the output PDF file that this will function will
+            create.
+
+    Returns:
+        output_pdf
+    """
+
+    with Image.open(image_filename) as im:
+        dpi = im.info["dpi"]
+        scale = 72.0 / dpi[0] / image_scale, 72.0 / dpi[1] / image_scale
+        width = im.width
+        height = im.height
+
+    with Pdf.new() as pdf:
+        pdf.add_blank_page(page_size=(width * scale[0], height * scale[1]))
+        pdf.pages[0].Resources = Dictionary(
+            Font=Dictionary({"/f-0-0": register_glyphlessfont(pdf)})
         )
-        cs.append(ContentStreamInstruction([], Operator("ET")))
 
-    cs.append(ContentStreamInstruction([], Operator("Q")))
-    pdf.pages[0].Contents = pdf.make_stream(unparse_content_stream(cs))
+        cs = list(generate_text_content_stream(results, scale, height))
+        pdf.pages[0].Contents = pdf.make_stream(unparse_content_stream(cs))
 
-    pdf.save(output_pdf)
+        pdf.save(output_pdf)
     return output_pdf
 
 
