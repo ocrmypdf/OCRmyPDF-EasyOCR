@@ -14,7 +14,7 @@ To test this plugin, create a new virtual environment and install, as follows:
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -e .
+pip install git+https://github.com/ocrmypdf/OCRmyPDF-EasyOCR.git
 ```
 
 When installed in the same virtual environment as OCRmyPDF, it will override Tesseract.
