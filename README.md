@@ -9,15 +9,25 @@ OCRmyPDF with Tesseract, and still relies on Tesseract for certain operations.
 
 ## Installation
 
-To test this plugin, create a new virtual environment and install, as follows:
+To use this plugin, first
+[install PyTorch according to the official instructions](https://pytorch.org/),
+which may differ for your platform.
+
+Then install OCRmyPDF-EasyOCR to the same virtual environment or conda environment
+as you installed PyTorch:
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
 pip install git+https://github.com/ocrmypdf/OCRmyPDF-EasyOCR.git
 ```
 
-When installed in the same virtual environment as OCRmyPDF, it will override Tesseract.
+The OCRmyPDF-EasyOCR will override Tesseract for OCR; however, OCR still depends
+on Tesseract for some tasks.
+
+## Troubleshooting
+
+If you see a log message
+``Neither CUDA nor MPS are available - defaulting to CPU. Note: This module is much faster with a GPU``
+then PyTorch is not installed.
 
 ## To do
 
