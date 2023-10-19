@@ -6,7 +6,7 @@ authors = [{ name = "James R. Barlow", email = "james@purplerock.ca" }]
 dependencies = [
     "easyocr>=1.7.0",
     "ocrmypdf>=14.2.1",
-    "Pillow<10",
+    "Pillow>=10.0.1",
     "opencv-python>=4.8.0.74",
 ]
 requires-python = ">=3.10"
