@@ -134,6 +134,14 @@ def cs_ET():
     return ContentStreamInstruction([], Operator("ET"))
 
 
+def cs_BDC(mctype, mcid):
+    return ContentStreamInstruction([mctype, Dictionary(MCID=mcid)], Operator("BDC"))
+
+
+def cs_EMC():
+    return ContentStreamInstruction([], Operator("EMC"))
+
+
 def cs_Tf(font, size):
     return ContentStreamInstruction([font, size], Operator("Tf"))
 
@@ -169,7 +177,7 @@ def generate_text_content_stream(
     """
 
     yield cs_q()
-    for result in results:
+    for n, result in enumerate(results):
         log.debug(f"Textline '{result.text}' in-image bbox: {bbox_string(result.quad)}")
         bbox = pt_from_pixel(result.quad, scale, height)
         angle = -atan2(bbox[5] - bbox[7], bbox[4] - bbox[6])
@@ -187,11 +195,13 @@ def generate_text_content_stream(
         h_stretch = 100.0 * box_width / len(result.text) / font_size * CHAR_ASPECT
 
         yield cs_BT()
+        yield cs_BDC(Name.Span, n)
         yield cs_Tr(3)  # Invisible ink
         yield cs_Tm(cos_a, -sin_a, sin_a, cos_a, bbox[6], bbox[7])
         yield cs_Tf(Name("/f-0-0"), font_size)
         yield cs_Tz(h_stretch)
         yield cs_TJ(result.text)
+        yield cs_EMC()
         yield cs_ET()
     yield cs_Q()
 
