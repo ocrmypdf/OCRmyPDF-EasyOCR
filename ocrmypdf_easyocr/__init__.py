@@ -15,6 +15,7 @@ import pluggy
 from ocrmypdf import OcrEngine, hookimpl
 from ocrmypdf._exec import tesseract
 
+from ocrmypdf_easyocr._cv import detect_skew
 from ocrmypdf_easyocr._easyocr import tidy_easyocr_result
 from ocrmypdf_easyocr._pdf import easyocr_to_pikepdf
 
@@ -131,12 +132,10 @@ class EasyOCREngine(OcrEngine):
 
     @staticmethod
     def get_deskew(input_file, options) -> float:
-        return tesseract.get_deskew(
-            input_file,
-            languages=options.languages,
-            engine_mode=options.tesseract_oem,
-            timeout=options.tesseract_non_ocr_timeout,
-        )
+        img = cv.imread(os.fspath(input_file))
+        angle = detect_skew(img)
+        log.debug(f"Detected skew angle: {angle:.2f} degrees")
+        return angle
 
     @staticmethod
     def generate_hocr(input_file, output_hocr, output_text, options):
