@@ -118,52 +118,99 @@ def register_glyphlessfont(pdf: Pdf):
     return basefont
 
 
-def cs_q():
-    return ContentStreamInstruction([], Operator("q"))
+class ContentStreamBuilder:
+    def __init__(self, instructions=None):
+        self._instructions = instructions or []
 
+    def q(self):
+        """Save the graphics state."""
+        inst = [ContentStreamInstruction([], Operator("q"))]
+        return ContentStreamBuilder(self._instructions + inst)
 
-def cs_Q():
-    return ContentStreamInstruction([], Operator("Q"))
+    def Q(self):
+        """Restore the graphics state."""
+        inst = [ContentStreamInstruction([], Operator("Q"))]
+        return ContentStreamBuilder(self._instructions + inst)
 
+    def cm(self, a: float, b: float, c: float, d: float, e: float, f: float):
+        """Concatenate matrix."""
+        inst = [ContentStreamInstruction([a, b, c, d, e, f], Operator("cm"))]
+        return ContentStreamBuilder(self._instructions + inst)
 
-def cs_BT():
-    return ContentStreamInstruction([], Operator("BT"))
+    def BT(self):
+        """Begin text object."""
+        inst = [ContentStreamInstruction([], Operator("BT"))]
+        return ContentStreamBuilder(self._instructions + inst)
 
+    def ET(self):
+        """End text object."""
+        inst = [ContentStreamInstruction([], Operator("ET"))]
+        return ContentStreamBuilder(self._instructions + inst)
 
-def cs_ET():
-    return ContentStreamInstruction([], Operator("ET"))
+    def BDC(self, mctype: Name, mcid: int):
+        """Begin marked content sequence."""
+        inst = [
+            ContentStreamInstruction([mctype, Dictionary(MCID=mcid)], Operator("BDC"))
+        ]
+        return ContentStreamBuilder(self._instructions + inst)
 
+    def EMC(self):
+        """End marked content sequence."""
+        inst = [ContentStreamInstruction([], Operator("EMC"))]
+        return ContentStreamBuilder(self._instructions + inst)
 
-def cs_BDC(mctype, mcid):
-    return ContentStreamInstruction([mctype, Dictionary(MCID=mcid)], Operator("BDC"))
+    def Tf(self, font: Name, size: int):
+        """Set text font and size."""
+        inst = [ContentStreamInstruction([font, size], Operator("Tf"))]
+        return ContentStreamBuilder(self._instructions + inst)
 
+    def Tm(self, a: float, b: float, c: float, d: float, e: float, f: float):
+        """Set text matrix."""
+        inst = [ContentStreamInstruction([a, b, c, d, e, f], Operator("Tm"))]
+        return ContentStreamBuilder(self._instructions + inst)
 
-def cs_EMC():
-    return ContentStreamInstruction([], Operator("EMC"))
+    def Tr(self, mode: int):
+        """Set text rendering mode."""
+        inst = [ContentStreamInstruction([mode], Operator("Tr"))]
+        return ContentStreamBuilder(self._instructions + inst)
 
+    def Tz(self, scale: float):
+        """Set text horizontal scaling."""
+        inst = [ContentStreamInstruction([scale], Operator("Tz"))]
+        return ContentStreamBuilder(self._instructions + inst)
 
-def cs_Tf(font, size):
-    return ContentStreamInstruction([font, size], Operator("Tf"))
+    def TJ(self, text):
+        """Show text."""
+        inst = [ContentStreamInstruction([[text.encode("utf-16be")]], Operator("TJ"))]
+        return ContentStreamBuilder(self._instructions + inst)
 
+    def s(self):
+        """Stroke and close path."""
+        inst = [ContentStreamInstruction([], Operator("s"))]
+        return ContentStreamBuilder(self._instructions + inst)
 
-def cs_Tm(a, b, c, d, e, f):
-    return ContentStreamInstruction([a, b, c, d, e, f], Operator("Tm"))
+    def re(self, x: float, y: float, w: float, h: float):
+        """Append rectangle to path."""
+        inst = [ContentStreamInstruction([x, y, w, h], Operator("re"))]
+        return ContentStreamBuilder(self._instructions + inst)
 
+    def RG(self, r: float, g: float, b: float):
+        """Set RGB stroke color."""
+        inst = [ContentStreamInstruction([r, g, b], Operator("RG"))]
+        return ContentStreamBuilder(self._instructions + inst)
 
-def cs_Tr(mode):
-    return ContentStreamInstruction([mode], Operator("Tr"))
+    def build(self):
+        return self._instructions
 
-
-def cs_Tz(scale):
-    return ContentStreamInstruction([scale], Operator("Tz"))
-
-
-def cs_TJ(text):
-    return ContentStreamInstruction([[text.encode("utf-16be")]], Operator("TJ"))
+    def add(self, other: ContentStreamBuilder):
+        return ContentStreamBuilder(self._instructions + other._instructions)
 
 
 def generate_text_content_stream(
-    results: Iterable[EasyOCRResult], scale: tuple[float, float], height: int
+    results: Iterable[EasyOCRResult],
+    scale: tuple[float, float],
+    height: int,
+    boxes=False,
 ):
     """Generate a content stream for the described by results.
 
@@ -176,7 +223,8 @@ def generate_text_content_stream(
         ContentStreamInstruction: Content stream instructions.
     """
 
-    yield cs_q()
+    cs = ContentStreamBuilder()
+    cs = cs.add(cs.q())
     for n, result in enumerate(results):
         log.debug(f"Textline '{result.text}' in-image bbox: {bbox_string(result.quad)}")
         bbox = pt_from_pixel(result.quad, scale, height)
@@ -194,16 +242,31 @@ def generate_text_content_stream(
             continue
         h_stretch = 100.0 * box_width / len(result.text) / font_size * CHAR_ASPECT
 
-        yield cs_BT()
-        yield cs_BDC(Name.Span, n)
-        yield cs_Tr(3)  # Invisible ink
-        yield cs_Tm(cos_a, -sin_a, sin_a, cos_a, bbox[6], bbox[7])
-        yield cs_Tf(Name("/f-0-0"), font_size)
-        yield cs_Tz(h_stretch)
-        yield cs_TJ(result.text)
-        yield cs_EMC()
-        yield cs_ET()
-    yield cs_Q()
+        cs = cs.add(
+            ContentStreamBuilder()
+            .BT()
+            .BDC(Name.Span, n)
+            .Tr(3)  # Invisible ink
+            .Tm(cos_a, -sin_a, sin_a, cos_a, bbox[6], bbox[7])
+            .Tf(Name("/f-0-0"), font_size)
+            .Tz(h_stretch)
+            .TJ(result.text)
+            .EMC()
+            .ET()
+        )
+        if boxes:
+            cs = cs.add(
+                ContentStreamBuilder()
+                .q()
+                .cm(cos_a, -sin_a, sin_a, cos_a, bbox[6], bbox[7])
+                .re(0, 0, box_width, font_size)
+                .RG(1, 0, 0)
+                .s()
+                .Q()
+            )
+
+    cs = cs.Q()
+    return cs.build()
 
 
 def easyocr_to_pikepdf(
@@ -239,7 +302,7 @@ def easyocr_to_pikepdf(
             Font=Dictionary({"/f-0-0": register_glyphlessfont(pdf)})
         )
 
-        cs = list(generate_text_content_stream(results, scale, height))
+        cs = generate_text_content_stream(results, scale, height, boxes=False)
         pdf.pages[0].Contents = pdf.make_stream(unparse_content_stream(cs))
 
         pdf.save(output_pdf)
