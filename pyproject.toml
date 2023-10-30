@@ -21,6 +21,9 @@ ocrmypdf = "ocrmypdf_easyocr"
 
 [project.optional-dependencies]
 dev = ["ruff>=0.0.272"]
+test = [
+  "pytest>=6.2.5",
+]
 
 [build-system]
 requires = ["setuptools"]

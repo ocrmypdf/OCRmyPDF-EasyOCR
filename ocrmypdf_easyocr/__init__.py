@@ -104,7 +104,7 @@ def add_options(parser):
 
 
 class EasyOCREngine(OcrEngine):
-    """Implements OCR with Tesseract."""
+    """Implements OCR with EasyOCR."""
 
     @staticmethod
     def version():
