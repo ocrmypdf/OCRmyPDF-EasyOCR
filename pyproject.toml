@@ -9,6 +9,7 @@ dependencies = [
     "Pillow>=10.0.1",
     "opencv-python>=4.8.0.74",
     "numpy>=1.20",
+    "torch",
 ]
 requires-python = ">=3.10"
 readme = "README.md"
