@@ -21,10 +21,10 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            python: "3.11"
+            python: "3.10"
             tesseract5: true
           - os: ubuntu-latest
-            python: "3.12"
+            python: "3.11"
             tesseract5: true
     env:
       OS: ${{ matrix.os }}
