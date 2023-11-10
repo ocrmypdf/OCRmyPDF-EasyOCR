@@ -274,6 +274,7 @@ def easyocr_to_pikepdf(
     image_scale: float,
     results: Iterable[EasyOCRResult],
     output_pdf: Path,
+    boxes: bool,
 ):
     """Convert EasyOCR results to a PDF with text annotations (no images).
 
@@ -302,7 +303,7 @@ def easyocr_to_pikepdf(
             Font=Dictionary({"/f-0-0": register_glyphlessfont(pdf)})
         )
 
-        cs = generate_text_content_stream(results, scale, height, boxes=False)
+        cs = generate_text_content_stream(results, scale, height, boxes=boxes)
         pdf.pages[0].Contents = pdf.make_stream(unparse_content_stream(cs))
 
         pdf.save(output_pdf)

@@ -97,10 +97,13 @@ def initialize(plugin_manager: pluggy.PluginManager):
 
 @hookimpl
 def add_options(parser):
-    easyocr_options = parser.add_argument_group(
-        "EasyOCR", "Advanced control of EasyOCR"
-    )
+    easyocr_options = parser.add_argument_group("EasyOCR", "EasyOCR options")
     easyocr_options.add_argument("--easyocr-no-gpu", action="store_false", dest="gpu")
+    easyocr_options.add_argument(
+        "--easyocr-debug-suppress-images",
+        action="store_true",
+        dest="easyocr_debug_suppress_images",
+    )
 
 
 class EasyOCREngine(OcrEngine):
@@ -155,8 +158,13 @@ class EasyOCREngine(OcrEngine):
         text = " ".join([result.text for result in results])
         output_text.write_text(text)
 
-        # easyocr_to_pdf(input_file, 1.0, results, output_pdf)
-        easyocr_to_pikepdf(input_file, 1.0, results, output_pdf)
+        easyocr_to_pikepdf(
+            input_file,
+            1.0,
+            results,
+            output_pdf,
+            boxes=options.easyocr_debug_suppress_images,
+        )
 
 
 @hookimpl
