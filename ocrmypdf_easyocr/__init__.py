@@ -6,23 +6,22 @@
 from __future__ import annotations
 
 import logging
-import os
 import multiprocessing.managers
+import os
 import threading
+import traceback
+from typing import Optional, Tuple
 
 import cv2 as cv
 import easyocr
+import numpy.typing as npt
 import pluggy
 from ocrmypdf import OcrEngine, hookimpl
 from ocrmypdf._exec import tesseract
-import traceback
 
 from ocrmypdf_easyocr._cv import detect_skew
 from ocrmypdf_easyocr._easyocr import tidy_easyocr_result
 from ocrmypdf_easyocr._pdf import easyocr_to_pikepdf
-
-from typing import Optional, Tuple
-import numpy.typing as npt
 
 log = logging.getLogger(__name__)
 
@@ -94,13 +93,13 @@ ISO_639_3_2: dict[str, str] = {
 
 Task = Tuple[npt.NDArray, multiprocessing.Value, threading.Event]
 
+
 def _ocrProcess(q: multiprocessing.Queue[Task], options):
     reader: Optional[easyocr.Reader] = None
 
     # TODO: signal _ocrProcess to quit after OCR completes.
     while True:
         (gray, outputDict, event) = q.get()
-
 
         # Init reader on first OCR attempt: Wait until `options` variable is fully initialized.
         # Note: `options` variable is on the same process with the main thread.
@@ -110,8 +109,7 @@ def _ocrProcess(q: multiprocessing.Queue[Task], options):
                 languages = [ISO_639_3_2[lang] for lang in options.languages]
                 reader = easyocr.Reader(languages, useGPU)
             outputDict["output"] = reader.readtext(
-                gray,
-                batch_size=options.easyocr_batch_size
+                gray, batch_size=options.easyocr_batch_size
             )
         except Exception as e:
             traceback.print_exception(e)
@@ -137,19 +135,20 @@ def check_options(options):
 
     # TODO : proper cleanup code for `ocrProcessList`
 
-    options._easyocr_struct = {
-        "manager": m,
-        "queue": q
-    }
+    options._easyocr_struct = {"manager": m, "queue": q}
+
 
 @hookimpl
 def add_options(parser):
-    easyocr_options = parser.add_argument_group(
-        "EasyOCR", "Advanced control of EasyOCR"
-    )
+    easyocr_options = parser.add_argument_group("EasyOCR", "EasyOCR options")
     easyocr_options.add_argument("--easyocr-no-gpu", action="store_false", dest="gpu")
     easyocr_options.add_argument("--easyocr-batch-size", type=int, default=4)
     easyocr_options.add_argument("--easyocr-workers", type=int, default=1)
+    easyocr_options.add_argument(
+        "--easyocr-debug-suppress-images",
+        action="store_true",
+        dest="easyocr_debug_suppress_images",
+    )
 
 
 class EasyOCREngine(OcrEngine):
@@ -208,8 +207,13 @@ class EasyOCREngine(OcrEngine):
         text = " ".join([result.text for result in results])
         output_text.write_text(text)
 
-        # easyocr_to_pdf(input_file, 1.0, results, output_pdf)
-        easyocr_to_pikepdf(input_file, 1.0, results, output_pdf)
+        easyocr_to_pikepdf(
+            input_file,
+            1.0,
+            results,
+            output_pdf,
+            boxes=options.easyocr_debug_suppress_images,
+        )
 
 
 @hookimpl
