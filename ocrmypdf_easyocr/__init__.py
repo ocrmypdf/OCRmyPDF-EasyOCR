@@ -16,7 +16,7 @@ import easyocr
 import pluggy
 from ocrmypdf import OcrEngine, hookimpl
 from ocrmypdf._exec import tesseract
-import time
+import traceback
 
 from ocrmypdf_easyocr._cv import detect_skew
 from ocrmypdf_easyocr._easyocr import tidy_easyocr_result
@@ -116,7 +116,7 @@ def _ocrThread(q: multiprocessing.Queue[Task], options):
                 workers=options.easyocr_workers
             )
         except Exception as e:
-            print(e)
+            traceback.print_exception(e)
             outputDict["output"] = ""
         finally:
             event.set()
