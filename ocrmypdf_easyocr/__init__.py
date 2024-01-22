@@ -110,7 +110,11 @@ def _ocrThread(q: multiprocessing.Queue[Task], options):
                 useGPU = options.gpu
                 languages = [ISO_639_3_2[lang] for lang in options.languages]
                 reader = easyocr.Reader(languages, useGPU)
-            outputDict["output"] = reader.readtext(gray)
+            outputDict["output"] = reader.readtext(
+                gray,
+                batch_size=options.easyocr_batch_size,
+                workers=options.easyocr_workers
+            )
         except Exception as e:
             print(e)
             outputDict["output"] = ""
@@ -140,6 +144,8 @@ def add_options(parser):
         "EasyOCR", "Advanced control of EasyOCR"
     )
     easyocr_options.add_argument("--easyocr-no-gpu", action="store_false", dest="gpu")
+    easyocr_options.add_argument("--easyocr-batch-size", type=int, default=4)
+    easyocr_options.add_argument("--easyocr-workers", type=int, default=0)
 
 
 class EasyOCREngine(OcrEngine):
