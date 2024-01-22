@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import logging
 import os
-import multiprocessing
 import multiprocessing.managers
 import threading
 
@@ -95,10 +94,10 @@ ISO_639_3_2: dict[str, str] = {
 
 Task = Tuple[npt.NDArray, multiprocessing.Value, threading.Event]
 
-def _ocrThread(q: multiprocessing.Queue[Task], options):
+def _ocrProcess(q: multiprocessing.Queue[Task], options):
     reader: Optional[easyocr.Reader] = None
 
-    # TODO: signal _ocrThread to quit after OCR completes.
+    # TODO: signal _ocrProcess to quit after OCR completes.
     while True:
         (gray, outputDict, event) = q.get()
 
@@ -112,8 +111,7 @@ def _ocrThread(q: multiprocessing.Queue[Task], options):
                 reader = easyocr.Reader(languages, useGPU)
             outputDict["output"] = reader.readtext(
                 gray,
-                batch_size=options.easyocr_batch_size,
-                workers=options.easyocr_workers
+                batch_size=options.easyocr_batch_size
             )
         except Exception as e:
             traceback.print_exception(e)
@@ -131,8 +129,14 @@ def initialize(plugin_manager: pluggy.PluginManager):
 def check_options(options):
     m = multiprocessing.Manager()
     q = multiprocessing.Queue(-1)
-    t = threading.Thread(target=_ocrThread, args=(q, options), daemon=True)
-    t.start()
+    ocrProcessList = []
+    for _ in range(options.easyocr_workers):
+        t = multiprocessing.Process(target=_ocrProcess, args=(q, options), daemon=True)
+        t.start()
+        ocrProcessList.append(t)
+
+    # TODO : proper cleanup code for `ocrProcessList`
+
     options._easyocr_struct = {
         "manager": m,
         "queue": q
@@ -145,7 +149,7 @@ def add_options(parser):
     )
     easyocr_options.add_argument("--easyocr-no-gpu", action="store_false", dest="gpu")
     easyocr_options.add_argument("--easyocr-batch-size", type=int, default=4)
-    easyocr_options.add_argument("--easyocr-workers", type=int, default=0)
+    easyocr_options.add_argument("--easyocr-workers", type=int, default=1)
 
 
 class EasyOCREngine(OcrEngine):
