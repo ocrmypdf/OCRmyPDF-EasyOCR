@@ -10,14 +10,16 @@ import multiprocessing.managers
 import os
 import threading
 import traceback
-from typing import Optional, Tuple
+from pathlib import Path
+from typing import Optional, Sequence, Tuple
 
 import cv2 as cv
 import easyocr
 import numpy.typing as npt
 import pluggy
-from ocrmypdf import OcrEngine, hookimpl
+from ocrmypdf import Executor, OcrEngine, PdfContext, hookimpl
 from ocrmypdf._exec import tesseract
+from ocrmypdf.builtin_plugins.optimize import optimize_pdf as default_optimize_pdf
 
 from ocrmypdf_easyocr._cv import detect_skew
 from ocrmypdf_easyocr._easyocr import tidy_easyocr_result
@@ -91,29 +93,31 @@ ISO_639_3_2: dict[str, str] = {
     "vie": "vi",
 }
 
-Task = Tuple[npt.NDArray, multiprocessing.Value, threading.Event]
+Task = Tuple[npt.NDArray, multiprocessing.Value, threading.Event] | None
 
 
-def _ocrProcess(q: multiprocessing.Queue[Task], options):
+def _ocr_process(q: multiprocessing.Queue[Task], options):
     reader: Optional[easyocr.Reader] = None
 
-    # TODO: signal _ocrProcess to quit after OCR completes.
     while True:
-        (gray, outputDict, event) = q.get()
+        message = q.get()
+        if message is None:
+            return  # exit process
+        gray, output_dict, event = message
 
         # Init reader on first OCR attempt: Wait until `options` variable is fully initialized.
         # Note: `options` variable is on the same process with the main thread.
         try:
             if reader is None:
-                useGPU = options.gpu
+                use_gpu = options.gpu
                 languages = [ISO_639_3_2[lang] for lang in options.languages]
-                reader = easyocr.Reader(languages, useGPU)
-            outputDict["output"] = reader.readtext(
+                reader = easyocr.Reader(languages, use_gpu)
+            output_dict["output"] = reader.readtext(
                 gray, batch_size=options.easyocr_batch_size
             )
         except Exception as e:
             traceback.print_exception(e)
-            outputDict["output"] = ""
+            output_dict["output"] = ""
         finally:
             event.set()
 
@@ -123,19 +127,50 @@ def initialize(plugin_manager: pluggy.PluginManager):
     pass
 
 
+class ProcessList:
+    def __init__(self, plist):
+        self.process_list = plist
+
+    def __getstate__(self):
+        return []
+
+
 @hookimpl
 def check_options(options):
     m = multiprocessing.Manager()
     q = multiprocessing.Queue(-1)
-    ocrProcessList = []
+    ocr_process_list = []
     for _ in range(options.easyocr_workers):
-        t = multiprocessing.Process(target=_ocrProcess, args=(q, options), daemon=True)
+        t = multiprocessing.Process(target=_ocr_process, args=(q, options), daemon=True)
         t.start()
-        ocrProcessList.append(t)
-
-    # TODO : proper cleanup code for `ocrProcessList`
+        ocr_process_list.append(t)
 
     options._easyocr_struct = {"manager": m, "queue": q}
+    options._easyocr_plist = ProcessList(ocr_process_list)
+
+
+@hookimpl
+def optimize_pdf(
+    input_pdf: Path,
+    output_pdf: Path,
+    context: PdfContext,
+    executor: Executor,
+    linearize: bool,
+) -> tuple[Path, Sequence[str]]:
+    options = context.options
+    for _ in range(options.easyocr_workers):
+        q = options._easyocr_struct["queue"]
+        q.put(None)  # send stop message
+    for p in options._easyocr_plist.process_list:
+        p.join(3.0)  # clean up child processes but don't wait forever
+
+    return default_optimize_pdf(
+        input_pdf=input_pdf,
+        output_pdf=output_pdf,
+        context=context,
+        executor=executor,
+        linearize=linearize,
+    )
 
 
 @hookimpl
@@ -194,14 +229,14 @@ class EasyOCREngine(OcrEngine):
         img = cv.imread(os.fspath(input_file))
         gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
 
-        s = options._easyocr_struct
-        manager: multiprocessing.managers.SyncManager = s["manager"]
-        queue: multiprocessing.Queue[Task] = s["queue"]
-        outputDict = manager.dict()
+        sync_data = options._easyocr_struct
+        manager: multiprocessing.managers.SyncManager = sync_data["manager"]
+        queue: multiprocessing.Queue[Task] = sync_data["queue"]
+        output_dict = manager.dict()
         event = manager.Event()
-        queue.put((gray, outputDict, event))
+        queue.put((gray, output_dict, event))
         event.wait()
-        raw_results = outputDict["output"]
+        raw_results = output_dict["output"]
 
         results = [tidy_easyocr_result(r) for r in raw_results]
         text = " ".join([result.text for result in results])
