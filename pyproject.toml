@@ -7,7 +7,7 @@ dependencies = [
     "easyocr>=1.7.0",
     "ocrmypdf>=14.2.1",
     "Pillow>=10.0.1",
-    "opencv-python>=4.8.0.74",
+    "opencv-python-headless>=4.8.0.74",
     "numpy>=1.20",
     "torch",
 ]
