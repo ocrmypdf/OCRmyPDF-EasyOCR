@@ -5,6 +5,7 @@ description = "Plugin to run OCRmyPDF with the EasyOCR engine"
 authors = [{ name = "James R. Barlow", email = "james@purplerock.ca" }]
 dependencies = [
     "easyocr>=1.7.0",
+    "billiard>=4.2.0",
     "ocrmypdf>=14.2.1",
     "Pillow>=10.0.1",
     "opencv-python>=4.8.0.74",
