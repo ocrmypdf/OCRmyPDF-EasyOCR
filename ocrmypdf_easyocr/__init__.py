@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import logging
-import multiprocessing.managers
+import billiard as multiprocessing
 import os
 import threading
 import traceback
