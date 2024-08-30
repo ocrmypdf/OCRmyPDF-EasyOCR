@@ -8,6 +8,8 @@ from __future__ import annotations
 import logging
 import multiprocessing.managers
 import os
+import sys
+import contextlib
 import threading
 import traceback
 from pathlib import Path
@@ -111,7 +113,12 @@ def _ocr_process(q: multiprocessing.Queue[Task], options):
             if reader is None:
                 use_gpu = options.gpu
                 languages = [ISO_639_3_2[lang] for lang in options.languages]
-                reader = easyocr.Reader(languages, use_gpu)
+                
+                # Redirect stdout to stderr during Reader initialization to be compliant with ocrmypdf
+                # otherwise piping a pdf output to stdout gets interfered with the progress bar of loading the model to ram 
+                with contextlib.redirect_stdout(sys.stderr):
+                    reader = easyocr.Reader(languages, use_gpu)
+                    
             output_dict["output"] = reader.readtext(
                 gray, batch_size=options.easyocr_batch_size
             )
