@@ -1,6 +1,6 @@
 [project]
 name = "ocrmypdf-easyocr"
-version = "0.2.0"
+version = "0.2.1"
 description = "Plugin to run OCRmyPDF with the EasyOCR engine"
 authors = [{ name = "James R. Barlow", email = "james@purplerock.ca" }]
 dependencies = [
@@ -29,8 +29,8 @@ Homepage = "https://github.com/ocrmypdf/OCRmyPDF-EasyOCR"
 Repository = "https://github.com/ocrmypdf/OCRmyPDF-EasyOCR.git"
 
 [build-system]
-requires = ["setuptools"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [tool.setuptools.package-data]
 ocrmypdf_easyocr = ["pdf.ttf", "py.typed"]
