@@ -5,11 +5,10 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
-import multiprocessing.managers
 import os
 import sys
-import contextlib
 import threading
 import traceback
 from pathlib import Path
@@ -26,6 +25,12 @@ from ocrmypdf.builtin_plugins.optimize import optimize_pdf as default_optimize_p
 from ocrmypdf_easyocr._cv import detect_skew
 from ocrmypdf_easyocr._easyocr import tidy_easyocr_result
 from ocrmypdf_easyocr._pdf import easyocr_to_pikepdf
+
+try:
+    # Use Celery's multiprocessing if available
+    import billiard as multiprocessing
+except ImportError:
+    import multiprocessing.managers
 
 log = logging.getLogger(__name__)
 
@@ -113,12 +118,12 @@ def _ocr_process(q: multiprocessing.Queue[Task], options):
             if reader is None:
                 use_gpu = options.gpu
                 languages = [ISO_639_3_2[lang] for lang in options.languages]
-                
+
                 # Redirect stdout to stderr during Reader initialization to be compliant with ocrmypdf
-                # otherwise piping a pdf output to stdout gets interfered with the progress bar of loading the model to ram 
+                # otherwise piping a pdf output to stdout gets interfered with the progress bar of loading the model to ram
                 with contextlib.redirect_stdout(sys.stderr):
                     reader = easyocr.Reader(languages, use_gpu)
-                    
+
             output_dict["output"] = reader.readtext(
                 gray, batch_size=options.easyocr_batch_size
             )
