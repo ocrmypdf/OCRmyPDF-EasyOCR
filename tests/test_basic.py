@@ -9,7 +9,7 @@ import ocrmypdf_easyocr
 
 
 def test_easyocr(resources, outpdf):
-    ocrmypdf.ocr(resources / "jbig2.pdf", outpdf)
+    ocrmypdf.ocr(resources / "jbig2.pdf", outpdf, pdf_renderer="sandwich")
     assert outpdf.exists()
 
     with pikepdf.open(outpdf) as pdf:
