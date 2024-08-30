@@ -23,6 +23,10 @@ pip install git+https://github.com/ocrmypdf/OCRmyPDF-EasyOCR.git
 The OCRmyPDF-EasyOCR will override Tesseract for OCR; however, OCR still depends
 on Tesseract for some tasks.
 
+If [Celery's multiprocessing](https://docs.celeryq.dev/en/stable/getting-started/introduction.html)
+is installed in the virtual environment, it will be used instead of the standard
+Python multiprocessing. This allows paperless-ngx, which uses Celery, to function correctly.
+
 ## Troubleshooting
 
 If you see a log message

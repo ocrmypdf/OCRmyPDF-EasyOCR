@@ -4,12 +4,12 @@ version = "0.1.0"
 description = "Plugin to run OCRmyPDF with the EasyOCR engine"
 authors = [{ name = "James R. Barlow", email = "james@purplerock.ca" }]
 dependencies = [
-    "easyocr>=1.7.0",
-    "ocrmypdf>=14.2.1",
-    "Pillow>=10.0.1",
-    "opencv-python-headless>=4.8.0.74",
-    "numpy>=1.20",
-    "torch",
+  "easyocr>=1.7.0",
+  "ocrmypdf>=14.2.1",
+  "Pillow>=10.0.1",
+  "opencv-python-headless>=4.8.0.74",
+  "numpy>=1.20",
+  "torch",
 ]
 requires-python = ">=3.10"
 readme = "README.md"
@@ -22,9 +22,11 @@ ocrmypdf = "ocrmypdf_easyocr"
 
 [project.optional-dependencies]
 dev = ["ruff>=0.0.272"]
-test = [
-  "pytest>=6.2.5",
-]
+test = ["pytest>=6.2.5"]
+
+[project.urls]
+Homepage = "https://github.com/ocrmypdf/OCRmyPDF-EasyOCR"
+Repository = "https://github.com/ocrmypdf/OCRmyPDF-EasyOCR.git"
 
 [build-system]
 requires = ["setuptools"]
