@@ -234,7 +234,9 @@ class EasyOCREngine(OcrEngine):
 
     @staticmethod
     def generate_hocr(input_file, output_hocr, output_text, options):
-        raise NotImplementedError("EasyOCR does not support hOCR output")
+        raise NotImplementedError(
+            "EasyOCR does not support hOCR output yet -- use --pdf-renderer=sandwich for now."
+        )
 
     @staticmethod
     def generate_pdf(input_file, output_pdf, output_text, options):
