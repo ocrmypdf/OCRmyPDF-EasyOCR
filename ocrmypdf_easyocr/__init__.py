@@ -56,6 +56,7 @@ ISO_639_3_2: dict[str, str] = {
     "eng": "en",
     "est": "et",
     "esp": "es",
+    "fas": "fa",
     "fra": "fr",
     "gle": "ga",
     "hin": "hi",
