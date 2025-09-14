@@ -90,7 +90,7 @@ jobs:
 
   docker:
     name: Build Ubuntu-based Docker image
-    needs: github-release
+    needs: build
     runs-on: ubuntu-latest
     if: github.event_name != 'pull_request'
     steps:
