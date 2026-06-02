@@ -122,81 +122,91 @@ class ContentStreamBuilder:
     def __init__(self, instructions=None):
         self._instructions = instructions or []
 
+    @staticmethod
+    def _inst(operands, operator):
+        return [
+            ContentStreamInstruction(
+                [
+                    float(v) if isinstance(v, float) else v
+                    for v in operands
+                ],
+                Operator(operator),
+            )
+        ]
+
     def q(self):
         """Save the graphics state."""
-        inst = [ContentStreamInstruction([], Operator("q"))]
+        inst = self._inst([], "q")
         return ContentStreamBuilder(self._instructions + inst)
 
     def Q(self):
         """Restore the graphics state."""
-        inst = [ContentStreamInstruction([], Operator("Q"))]
+        inst = self._inst([], "Q")
         return ContentStreamBuilder(self._instructions + inst)
 
     def cm(self, a: float, b: float, c: float, d: float, e: float, f: float):
         """Concatenate matrix."""
-        inst = [ContentStreamInstruction([a, b, c, d, e, f], Operator("cm"))]
+        inst = self._inst([a, b, c, d, e, f], "cm")
         return ContentStreamBuilder(self._instructions + inst)
 
     def BT(self):
         """Begin text object."""
-        inst = [ContentStreamInstruction([], Operator("BT"))]
+        inst = self._inst([], "BT")
         return ContentStreamBuilder(self._instructions + inst)
 
     def ET(self):
         """End text object."""
-        inst = [ContentStreamInstruction([], Operator("ET"))]
+        inst = self._inst([], "ET")
         return ContentStreamBuilder(self._instructions + inst)
 
     def BDC(self, mctype: Name, mcid: int):
         """Begin marked content sequence."""
-        inst = [
-            ContentStreamInstruction([mctype, Dictionary(MCID=mcid)], Operator("BDC"))
-        ]
+        inst = self._inst([mctype, Dictionary(MCID=mcid)], "BDC")
         return ContentStreamBuilder(self._instructions + inst)
 
     def EMC(self):
         """End marked content sequence."""
-        inst = [ContentStreamInstruction([], Operator("EMC"))]
+        inst = self._inst([], "EMC")
         return ContentStreamBuilder(self._instructions + inst)
 
-    def Tf(self, font: Name, size: int):
+    def Tf(self, font: Name, size: float):
         """Set text font and size."""
-        inst = [ContentStreamInstruction([font, size], Operator("Tf"))]
+        inst = self._inst([font, size], "Tf")
         return ContentStreamBuilder(self._instructions + inst)
 
     def Tm(self, a: float, b: float, c: float, d: float, e: float, f: float):
         """Set text matrix."""
-        inst = [ContentStreamInstruction([a, b, c, d, e, f], Operator("Tm"))]
+        inst = self._inst([a, b, c, d, e, f], "Tm")
         return ContentStreamBuilder(self._instructions + inst)
 
     def Tr(self, mode: int):
         """Set text rendering mode."""
-        inst = [ContentStreamInstruction([mode], Operator("Tr"))]
+        inst = self._inst([mode], "Tr")
         return ContentStreamBuilder(self._instructions + inst)
 
     def Tz(self, scale: float):
         """Set text horizontal scaling."""
-        inst = [ContentStreamInstruction([scale], Operator("Tz"))]
+        inst = self._inst([scale], "Tz")
         return ContentStreamBuilder(self._instructions + inst)
 
     def TJ(self, text):
         """Show text."""
-        inst = [ContentStreamInstruction([[text.encode("utf-16be")]], Operator("TJ"))]
+        inst = self._inst([[text.encode("utf-16be")]], "TJ")
         return ContentStreamBuilder(self._instructions + inst)
 
     def s(self):
         """Stroke and close path."""
-        inst = [ContentStreamInstruction([], Operator("s"))]
+        inst = self._inst([], "s")
         return ContentStreamBuilder(self._instructions + inst)
 
     def re(self, x: float, y: float, w: float, h: float):
         """Append rectangle to path."""
-        inst = [ContentStreamInstruction([x, y, w, h], Operator("re"))]
+        inst = self._inst([x, y, w, h], "re")
         return ContentStreamBuilder(self._instructions + inst)
 
     def RG(self, r: float, g: float, b: float):
         """Set RGB stroke color."""
-        inst = [ContentStreamInstruction([r, g, b], Operator("RG"))]
+        inst = self._inst([r, g, b], "RG")
         return ContentStreamBuilder(self._instructions + inst)
 
     def build(self):
