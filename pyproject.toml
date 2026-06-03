@@ -1,17 +1,17 @@
 [project]
 name = "ocrmypdf-easyocr"
-version = "0.2.1"
+version = "0.3.0"
 description = "Plugin to run OCRmyPDF with the EasyOCR engine"
 authors = [{ name = "James R. Barlow", email = "james@purplerock.ca" }]
 dependencies = [
   "easyocr>=1.7.0",
-  "ocrmypdf>=14.2.1",
+  "ocrmypdf>=17.0",
   "Pillow>=10.0.1",
   "opencv-python-headless>=4.8.0.74",
   "numpy>=1.20",
   "torch",
 ]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 readme = "README.md"
 license = { text = "MIT" }
 
@@ -20,7 +20,7 @@ license = { text = "MIT" }
 [project.entry-points.ocrmypdf]
 ocrmypdf = "ocrmypdf_easyocr"
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = ["ruff>=0.0.272"]
 test = ["pytest>=6.2.5"]
 
@@ -32,5 +32,5 @@ Repository = "https://github.com/ocrmypdf/OCRmyPDF-EasyOCR.git"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-[tool.setuptools.package-data]
-ocrmypdf_easyocr = ["pdf.ttf", "py.typed"]
+[tool.hatch.build.targets.wheel]
+packages = ["ocrmypdf_easyocr"]

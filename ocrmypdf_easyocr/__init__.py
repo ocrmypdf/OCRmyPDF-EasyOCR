@@ -10,27 +10,16 @@ import logging
 import os
 import sys
 import threading
-import traceback
-from pathlib import Path
-from typing import Optional, Sequence, Tuple
+from math import atan2, degrees
 
 import cv2 as cv
 import easyocr
-import numpy.typing as npt
-import pluggy
-from ocrmypdf import Executor, OcrEngine, PdfContext, hookimpl
+from ocrmypdf import BoundingBox, OcrClass, OcrElement, OcrEngine, hookimpl
 from ocrmypdf._exec import tesseract
-from ocrmypdf.builtin_plugins.optimize import optimize_pdf as default_optimize_pdf
+from PIL import Image
 
 from ocrmypdf_easyocr._cv import detect_skew
 from ocrmypdf_easyocr._easyocr import tidy_easyocr_result
-from ocrmypdf_easyocr._pdf import easyocr_to_pikepdf
-
-try:
-    # Use Celery's multiprocessing if available
-    import billiard as multiprocessing
-except ImportError:
-    import multiprocessing.managers
 
 log = logging.getLogger(__name__)
 
@@ -101,101 +90,95 @@ ISO_639_3_2: dict[str, str] = {
     "vie": "vi",
 }
 
-Task = Tuple[npt.NDArray, multiprocessing.Value, threading.Event] | None
+# Defaults for the EasyOCR options. OCRmyPDF only applies argparse defaults on the
+# command-line path; when driven through the Python API these options may be
+# absent from OcrOptions, so the engine reads them defensively with these values.
+DEFAULT_GPU = True
+DEFAULT_BATCH_SIZE = 4
+
+# EasyOCR's Reader is expensive to construct (it loads models, possibly onto a
+# GPU) and EasyOCR/PyTorch inference is not thread-safe. OCRmyPDF parallelizes
+# OCR across pages, so we keep a single lazily-constructed Reader and serialize
+# access to it with a lock. This keeps exactly one inference running at a time,
+# matching EasyOCR's effectively single-threaded design, without spawning our
+# own worker processes (which also keeps us friendly to Celery/paperless-ngx).
+_reader: easyocr.Reader | None = None
+_reader_lock = threading.Lock()
 
 
-def _ocr_process(q: multiprocessing.Queue[Task], options):
-    reader: Optional[easyocr.Reader] = None
+def _get_reader(options) -> easyocr.Reader:
+    """Return the shared EasyOCR Reader, constructing it on first use.
 
-    while True:
-        message = q.get()
-        if message is None:
-            return  # exit process
-        gray, output_dict, event = message
-
-        # Init reader on first OCR attempt: Wait until `options` variable is fully initialized.
-        # Note: `options` variable is on the same process with the main thread.
-        try:
-            if reader is None:
-                use_gpu = options.gpu
-                languages = [ISO_639_3_2[lang] for lang in options.languages]
-
-                # Redirect stdout to stderr during Reader initialization to be compliant with ocrmypdf
-                # otherwise piping a pdf output to stdout gets interfered with the progress bar of loading the model to ram
-                with contextlib.redirect_stdout(sys.stderr):
-                    reader = easyocr.Reader(languages, use_gpu)
-
-            output_dict["output"] = reader.readtext(
-                gray, batch_size=options.easyocr_batch_size
-            )
-        except Exception as e:
-            traceback.print_exception(e)
-            output_dict["output"] = ""
-        finally:
-            event.set()
-
-
-@hookimpl
-def initialize(plugin_manager: pluggy.PluginManager):
-    pass
-
-
-class ProcessList:
-    def __init__(self, plist):
-        self.process_list = plist
-
-    def __getstate__(self):
-        return []
-
-
-@hookimpl
-def check_options(options):
-    m = multiprocessing.Manager()
-    q = multiprocessing.Queue(-1)
-    ocr_process_list = []
-    for _ in range(options.easyocr_workers):
-        t = multiprocessing.Process(target=_ocr_process, args=(q, options), daemon=True)
-        t.start()
-        ocr_process_list.append(t)
-
-    options._easyocr_struct = {"manager": m, "queue": q}
-    options._easyocr_plist = ProcessList(ocr_process_list)
-
-
-@hookimpl
-def optimize_pdf(
-    input_pdf: Path,
-    output_pdf: Path,
-    context: PdfContext,
-    executor: Executor,
-    linearize: bool,
-) -> tuple[Path, Sequence[str]]:
-    options = context.options
-    for _ in range(options.easyocr_workers):
-        q = options._easyocr_struct["queue"]
-        q.put(None)  # send stop message
-    for p in options._easyocr_plist.process_list:
-        p.join(3.0)  # clean up child processes but don't wait forever
-
-    return default_optimize_pdf(
-        input_pdf=input_pdf,
-        output_pdf=output_pdf,
-        context=context,
-        executor=executor,
-        linearize=linearize,
-    )
+    Must be called while holding ``_reader_lock``.
+    """
+    global _reader
+    if _reader is None:
+        languages = [ISO_639_3_2[lang] for lang in options.languages]
+        # Redirect stdout to stderr during Reader initialization to be compliant
+        # with ocrmypdf; otherwise the model-loading progress bar interferes with
+        # PDFs that are piped to stdout.
+        with contextlib.redirect_stdout(sys.stderr):
+            _reader = easyocr.Reader(languages, gpu=getattr(options, "gpu", DEFAULT_GPU))
+    return _reader
 
 
 @hookimpl
 def add_options(parser):
     easyocr_options = parser.add_argument_group("EasyOCR", "EasyOCR options")
-    easyocr_options.add_argument("--easyocr-no-gpu", action="store_false", dest="gpu")
-    easyocr_options.add_argument("--easyocr-batch-size", type=int, default=4)
-    easyocr_options.add_argument("--easyocr-workers", type=int, default=1)
     easyocr_options.add_argument(
-        "--easyocr-debug-suppress-images",
-        action="store_true",
-        dest="easyocr_debug_suppress_images",
+        "--easyocr-no-gpu", action="store_false", dest="gpu", default=DEFAULT_GPU
+    )
+    easyocr_options.add_argument(
+        "--easyocr-batch-size", type=int, default=DEFAULT_BATCH_SIZE
+    )
+
+
+def _easyocr_to_ocr_tree(input_file, results, page_number) -> OcrElement:
+    """Convert tidied EasyOCR results into an OcrElement tree for OCRmyPDF.
+
+    OCRmyPDF 17+ renders the text layer itself from this tree (using its fpdf2
+    renderer), so we only describe where text was found. Coordinates are in image
+    pixels with a top-left origin, which is what the renderer expects.
+    """
+    with Image.open(input_file) as im:
+        width, height = im.width, im.height
+        dpi = im.info.get("dpi", (72.0, 72.0))[0]
+
+    lines: list[OcrElement] = []
+    for result in results:
+        if not result.text:
+            continue
+        # quad is flattened [ulx, uly, urx, ury, lrx, lry, llx, lly]
+        xs = result.quad[0::2]
+        ys = result.quad[1::2]
+        bbox = BoundingBox(
+            left=min(xs), top=min(ys), right=max(xs), bottom=max(ys)
+        )
+
+        # Rotation of the text, in degrees counter-clockwise (per the hOCR
+        # convention OCRmyPDF's renderer uses). Image y grows downward, so a
+        # counter-clockwise rotation makes the top edge (ul -> ur) rise, i.e. a
+        # decreasing y; hence the negated dy.
+        ulx, uly, urx, ury = result.quad[0], result.quad[1], result.quad[2], result.quad[3]
+        angle = degrees(atan2(-(ury - uly), urx - ulx))
+        textangle = angle if abs(angle) >= 0.6 else 0.0  # ignore <0.6 deg noise
+
+        word = OcrElement(ocr_class=OcrClass.WORD, bbox=bbox, text=result.text)
+        lines.append(
+            OcrElement(
+                ocr_class=OcrClass.LINE,
+                bbox=bbox,
+                textangle=textangle,
+                children=[word],
+            )
+        )
+
+    return OcrElement(
+        ocr_class=OcrClass.PAGE,
+        bbox=BoundingBox(left=0, top=0, right=width, bottom=height),
+        dpi=float(dpi),
+        page_number=page_number,
+        children=lines,
     )
 
 
@@ -208,22 +191,21 @@ class EasyOCREngine(OcrEngine):
 
     @staticmethod
     def creator_tag(options):
-        tag = "-PDF" if options.pdf_renderer == "sandwich" else ""
-        return f"EasyOCR{tag} {EasyOCREngine.version()}"
+        return f"EasyOCR {EasyOCREngine.version()}"
 
     def __str__(self):
         return f"EasyOCR {EasyOCREngine.version()}"
 
     @staticmethod
     def languages(options):
-        return ISO_639_3_2.keys()
+        return set(ISO_639_3_2.keys())
 
     @staticmethod
     def get_orientation(input_file, options):
         return tesseract.get_orientation(
             input_file,
-            engine_mode=options.tesseract_oem,
-            timeout=options.tesseract_non_ocr_timeout,
+            engine_mode=options.tesseract.oem,
+            timeout=options.tesseract.non_ocr_timeout,
         )
 
     @staticmethod
@@ -234,38 +216,38 @@ class EasyOCREngine(OcrEngine):
         return angle
 
     @staticmethod
+    def supports_generate_ocr() -> bool:
+        return True
+
+    @staticmethod
+    def generate_ocr(input_file, options, page_number=0) -> tuple[OcrElement, str]:
+        img = cv.imread(os.fspath(input_file))
+        gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
+
+        batch_size = getattr(options, "easyocr_batch_size", DEFAULT_BATCH_SIZE)
+        with _reader_lock:
+            reader = _get_reader(options)
+            raw_results = reader.readtext(gray, batch_size=batch_size)
+
+        results = [tidy_easyocr_result(r) for r in raw_results]
+        text = " ".join(result.text for result in results)
+
+        page = _easyocr_to_ocr_tree(input_file, results, page_number)
+        return page, text
+
+    @staticmethod
     def generate_hocr(input_file, output_hocr, output_text, options):
         raise NotImplementedError(
-            "EasyOCR does not support hOCR output yet -- use --pdf-renderer=sandwich for now."
+            "EasyOCR uses the generate_ocr() API; hOCR output is not produced."
         )
 
     @staticmethod
     def generate_pdf(input_file, output_pdf, output_text, options):
-        img = cv.imread(os.fspath(input_file))
-        gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
-
-        sync_data = options._easyocr_struct
-        manager: multiprocessing.managers.SyncManager = sync_data["manager"]
-        queue: multiprocessing.Queue[Task] = sync_data["queue"]
-        output_dict = manager.dict()
-        event = manager.Event()
-        queue.put((gray, output_dict, event))
-        event.wait()
-        raw_results = output_dict["output"]
-
-        results = [tidy_easyocr_result(r) for r in raw_results]
-        text = " ".join([result.text for result in results])
-        output_text.write_text(text)
-
-        easyocr_to_pikepdf(
-            input_file,
-            1.0,
-            results,
-            output_pdf,
-            boxes=options.easyocr_debug_suppress_images,
+        raise NotImplementedError(
+            "EasyOCR uses the generate_ocr() API; OCRmyPDF renders the text layer."
         )
 
 
 @hookimpl
-def get_ocr_engine():
+def get_ocr_engine(options):
     return EasyOCREngine()

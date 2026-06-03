@@ -4,16 +4,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl git unzip ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Seed pip into the ocrmypdf venv
-RUN set -eux; \
-    curl -fsSL https://bootstrap.pypa.io/get-pip.py -o /tmp/get-pip.py; \
-    /app/.venv/bin/python /tmp/get-pip.py; \
-    /app/.venv/bin/pip --version; \
-    rm -f /tmp/get-pip.py
+# Bring in the uv binary for fast, reproducible installs into the ocrmypdf venv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
 
-RUN /app/.venv/bin/pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cu124
+ENV VIRTUAL_ENV=/app/.venv
 
-RUN /app/.venv/bin/pip install --no-cache-dir git+https://github.com/ocrmypdf/OCRmyPDF-EasyOCR.git
+RUN uv pip install --no-cache torch torchvision --index-url https://download.pytorch.org/whl/cu124
+
+RUN uv pip install --no-cache git+https://github.com/ocrmypdf/OCRmyPDF-EasyOCR.git
 
 RUN mkdir -p /root/.EasyOCR/model && \
     cd /root/.EasyOCR/model && \

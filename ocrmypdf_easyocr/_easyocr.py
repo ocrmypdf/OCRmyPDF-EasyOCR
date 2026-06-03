@@ -8,13 +8,6 @@ from __future__ import annotations
 from typing import NamedTuple
 
 
-class EasyOCRQuad(NamedTuple):
-    ul: tuple[int, int]
-    ur: tuple[int, int]
-    lr: tuple[int, int]
-    ll: tuple[int, int]
-
-
 class EasyOCRResult(NamedTuple):
     """Result of OCR with EasyOCR."""
 
