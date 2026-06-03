@@ -90,6 +90,9 @@ ISO_639_3_2: dict[str, str] = {
     "vie": "vi",
 }
 
+# Name this engine registers under for OCRmyPDF's --ocr-engine option.
+OCR_ENGINE_NAME = "easyocr"
+
 # Defaults for the EasyOCR options. OCRmyPDF only applies argparse defaults on the
 # command-line path; when driven through the Python API these options may be
 # absent from OcrOptions, so the engine reads them defensively with these values.
@@ -122,8 +125,24 @@ def _get_reader(options) -> easyocr.Reader:
     return _reader
 
 
+def _register_ocr_engine_choice(parser):
+    """Add ``easyocr`` to the core ``--ocr-engine`` choices, if present.
+
+    OCRmyPDF defines ``--ocr-engine`` with a fixed set of choices; argparse has no
+    public API to extend them, so we reach into the existing action. This lets
+    users explicitly select ``--ocr-engine easyocr``.
+    """
+    for action in parser._actions:
+        if action.dest == "ocr_engine" and action.choices is not None:
+            if OCR_ENGINE_NAME not in action.choices:
+                action.choices = [*action.choices, OCR_ENGINE_NAME]
+            return
+
+
 @hookimpl
 def add_options(parser):
+    _register_ocr_engine_choice(parser)
+
     easyocr_options = parser.add_argument_group("EasyOCR", "EasyOCR options")
     easyocr_options.add_argument(
         "--easyocr-no-gpu", action="store_false", dest="gpu", default=DEFAULT_GPU
@@ -248,6 +267,18 @@ class EasyOCREngine(OcrEngine):
         )
 
 
-@hookimpl
+@hookimpl(tryfirst=True)
 def get_ocr_engine(options):
+    """Select EasyOCR as the OCR engine.
+
+    ``get_ocr_engine`` is a firstresult hook shared with OCRmyPDF's built-in
+    Tesseract and null engines. We run first (``tryfirst``) so that, when this
+    plugin is installed, EasyOCR is used for the default ``--ocr-engine auto`` as
+    well as the explicit ``--ocr-engine easyocr``. Returning ``None`` for any
+    other selection lets the built-in engines (``tesseract``, ``none``) handle it.
+    """
+    if options is not None:
+        ocr_engine = getattr(options, "ocr_engine", "auto")
+        if ocr_engine not in ("auto", OCR_ENGINE_NAME):
+            return None
     return EasyOCREngine()

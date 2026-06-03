@@ -28,8 +28,10 @@ pip install git+https://github.com/ocrmypdf/OCRmyPDF-EasyOCR.git
 ```
 
 Once installed, the plugin is discovered automatically through its entry point,
-and OCRmyPDF will use EasyOCR for OCR. OCR still depends on Tesseract for some
-non-OCR tasks (see below).
+and OCRmyPDF uses EasyOCR for OCR by default (i.e. for `--ocr-engine auto`). You
+can also select it explicitly with `--ocr-engine easyocr`, or fall back to the
+built-in engines with `--ocr-engine tesseract` / `--ocr-engine none`. OCR still
+depends on Tesseract for some non-OCR tasks (see below).
 
 ## Development
 

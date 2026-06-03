@@ -40,6 +40,34 @@ def test_easyocr_engine_is_used(resources, outpdf, monkeypatch):
         assert "EasyOCR" in str(pdf.docinfo["/Creator"])
 
 
+def test_ocr_engine_tesseract_overrides_easyocr(resources, outpdf, monkeypatch):
+    """`--ocr-engine tesseract` must defer to Tesseract, not run EasyOCR.
+
+    Guards the firstresult-hook selection logic: our get_ocr_engine runs first
+    (tryfirst) but returns None for non-EasyOCR selections.
+    """
+    called = False
+    original_readtext = easyocr.Reader.readtext
+
+    def spy_readtext(self, *args, **kwargs):
+        nonlocal called
+        called = True
+        return original_readtext(self, *args, **kwargs)
+
+    monkeypatch.setattr(easyocr.Reader, "readtext", spy_readtext)
+
+    ocrmypdf.ocr(
+        resources / "jbig2.pdf",
+        outpdf,
+        ocr_engine="tesseract",
+        progress_bar=False,
+    )
+
+    assert not called, "EasyOCR ran despite --ocr-engine tesseract"
+    with pikepdf.open(outpdf) as pdf:
+        assert "Tesseract" in str(pdf.docinfo["/Creator"])
+
+
 @pytest.mark.skipif(
     shutil.which("pdftotext") is None, reason="poppler's pdftotext not installed"
 )
