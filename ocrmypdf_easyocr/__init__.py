@@ -121,7 +121,9 @@ def _get_reader(options) -> easyocr.Reader:
         # with ocrmypdf; otherwise the model-loading progress bar interferes with
         # PDFs that are piped to stdout.
         with contextlib.redirect_stdout(sys.stderr):
-            _reader = easyocr.Reader(languages, gpu=getattr(options, "gpu", DEFAULT_GPU))
+            _reader = easyocr.Reader(
+                languages, gpu=getattr(options, "gpu", DEFAULT_GPU)
+            )
     return _reader
 
 
@@ -170,15 +172,18 @@ def _easyocr_to_ocr_tree(input_file, results, page_number) -> OcrElement:
         # quad is flattened [ulx, uly, urx, ury, lrx, lry, llx, lly]
         xs = result.quad[0::2]
         ys = result.quad[1::2]
-        bbox = BoundingBox(
-            left=min(xs), top=min(ys), right=max(xs), bottom=max(ys)
-        )
+        bbox = BoundingBox(left=min(xs), top=min(ys), right=max(xs), bottom=max(ys))
 
         # Rotation of the text, in degrees counter-clockwise (per the hOCR
         # convention OCRmyPDF's renderer uses). Image y grows downward, so a
         # counter-clockwise rotation makes the top edge (ul -> ur) rise, i.e. a
         # decreasing y; hence the negated dy.
-        ulx, uly, urx, ury = result.quad[0], result.quad[1], result.quad[2], result.quad[3]
+        ulx, uly, urx, ury = (
+            result.quad[0],
+            result.quad[1],
+            result.quad[2],
+            result.quad[3],
+        )
         angle = degrees(atan2(-(ury - uly), urx - ulx))
         textangle = angle if abs(angle) >= 0.6 else 0.0  # ignore <0.6 deg noise
 
@@ -240,6 +245,8 @@ class EasyOCREngine(OcrEngine):
 
     @staticmethod
     def generate_ocr(input_file, options, page_number=0) -> tuple[OcrElement, str]:
+        if page_number == 0:
+            log.debug("EasyOCR processing %s", input_file)
         img = cv.imread(os.fspath(input_file))
         gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
 
