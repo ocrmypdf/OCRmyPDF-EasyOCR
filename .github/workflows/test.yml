@@ -31,7 +31,7 @@ jobs:
       PYTHON: ${{ matrix.python }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: "0"
 
@@ -60,12 +60,12 @@ jobs:
             zlib1g
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
 
       - name: Cache EasyOCR models
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.EasyOCR
           key: easyocr-models-${{ runner.os }}
